@@ -1,0 +1,52 @@
+# Сборка panvk-*.tzst в GitHub Actions (~30–60 мин, без RAM на ПК)
+
+name: Build PanVK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master, mali]
+    paths:
+      - 'panvk/**'
+      - '.github/workflows/build-panvk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential git meson ninja-build cmake pkg-config \
+            llvm-dev libclang-dev spirv-tools libclc-dev libdrm-dev \
+            zstd
+
+      - name: Setup Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
+      - name: Build PanVK tzst
+        env:
+          ANDROID_NDK: ${{ steps.ndk.outputs.ndk-path }}
+          JOBS: "2"
+          BUILD_DIR: /tmp/panvk-build
+          ASSET_DIR: ${{ github.workspace }}/output
+        run: |
+          chmod +x panvk/build-panvk.sh
+          mkdir -p output
+          panvk/build-panvk.sh
+          ls -la output/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: panvk-tzst
+          path: output/panvk-*.tzst
+          if-no-files-found: error
