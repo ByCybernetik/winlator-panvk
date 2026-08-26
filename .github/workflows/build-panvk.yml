@@ -25,6 +25,7 @@ jobs:
             build-essential git ninja-build cmake pkg-config python3-pip \
             python3-mako python3-ply python3-yaml \
             llvm-dev libclang-dev spirv-tools libclc-20-dev libdrm-dev \
+            libllvmspirvlib-18-dev spirv-llvm-translator-18 \
             zstd
           # Ubuntu 24.04 meson 1.3.x; Mesa 25.3+ needs >= 1.4
           sudo pip3 install --break-system-packages 'meson>=1.4.0'
