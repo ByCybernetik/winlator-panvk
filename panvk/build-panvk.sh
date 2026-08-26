@@ -36,21 +36,19 @@ export CC="${CC:-/usr/bin/cc}"
 export CXX="${CXX:-/usr/bin/c++}"
 export CFLAGS="${CFLAGS:--O1 -g0 -fno-var-tracking-assignments}"
 export CXXFLAGS="${CXXFLAGS:--O1 -g0 -fno-var-tracking-assignments}"
+export LDFLAGS="${LDFLAGS:--Wl,--no-keep-memory}"
 
 HOST_COMPILER_PREFIX="$BUILD_DIR/mesa-host"
 ANDROID_BUILD="$BUILD_DIR/mesa-android"
 LIBCLC_PREFIX="$BUILD_DIR/libclc-prefix"
 LIBCLC_BUILD="$BUILD_DIR/libclc-build"
 
+# Compiler flags via CFLAGS/CXXFLAGS/LDFLAGS (meson 1.4+ rejects broken array syntax in -Dc_args)
 MESON_LOW_MEM=(
     -Dbuildtype=plain
     -Db_lto=false
     -Db_ndebug=true
     -Dshader-cache=disabled
-    -Dc_args=['-O1','-g0','-fno-var-tracking-assignments']
-    -Dcpp_args=['-O1','-g0','-fno-var-tracking-assignments']
-    -Dc_link_args=['-Wl,--no-keep-memory']
-    -Dcpp_link_args=['-Wl,--no-keep-memory','-Wl,--threads=1']
 )
 
 die() { echo "ERROR: $*" >&2; exit 1; }
