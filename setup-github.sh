@@ -3,7 +3,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-GITHUB_USER="${GITHUB_USER:-Cybernetik}"
+GITHUB_USER="${GITHUB_USER:-ByCybernetik}"
 GITHUB_REPO="${GITHUB_REPO:-winlator-panvk}"
 
 GH="$(command -v gh || true)"

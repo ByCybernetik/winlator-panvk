@@ -16,14 +16,14 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential git meson ninja-build cmake pkg-config \
-            llvm-dev libclang-dev spirv-tools libclc-dev libdrm-dev \
+            llvm-dev libclang-dev spirv-tools libclc-20-dev libdrm-dev \
             zstd
 
       - name: Setup Android NDK
@@ -45,7 +45,7 @@ jobs:
           ls -la output/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: panvk-tzst
           path: output/panvk-*.tzst
