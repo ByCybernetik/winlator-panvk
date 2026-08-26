@@ -23,6 +23,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential git ninja-build cmake pkg-config python3-pip \
+            python3-mako python3-ply python3-yaml \
             llvm-dev libclang-dev spirv-tools libclc-20-dev libdrm-dev \
             zstd
           # Ubuntu 24.04 meson 1.3.x; Mesa 25.3+ needs >= 1.4
