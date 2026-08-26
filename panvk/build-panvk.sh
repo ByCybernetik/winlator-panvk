@@ -258,6 +258,8 @@ EOF
     if [[ ! -f "$ANDROID_BUILD/build.ninja" ]]; then
         rm -rf "$ANDROID_BUILD"
         clear_compiler_flags
+        # Host pkg-config must not enable deps (zstd, etc.) the NDK sysroot lacks
+        export PKG_CONFIG_LIBDIR="${ANDROID_PKG_CONFIG_LIBDIR:-/disable/non/android/system/pc/files}"
         meson setup "$ANDROID_BUILD" "$MESA_SRC" \
             --cross-file "$CROSS_FILE" \
             "${MESON_LOW_MEM[@]}" \
@@ -269,9 +271,12 @@ EOF
             -Dgallium-drivers= \
             -Dvulkan-drivers=panfrost \
             -Dallow-fallback-for=libdrm \
+            -Dzstd=disabled \
             -Dmesa-clc=system \
             -Dprecomp-compiler=system
     fi
+
+    export PKG_CONFIG_LIBDIR="${ANDROID_PKG_CONFIG_LIBDIR:-/disable/non/android/system/pc/files}"
 
     ninja_or_make "$ANDROID_BUILD"
 }
