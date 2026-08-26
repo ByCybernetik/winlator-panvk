@@ -34,9 +34,17 @@ export CMAKE_BUILD_PARALLEL_LEVEL="${JOBS}"
 export LLVM_PARALLEL_LINK_JOBS=1
 export CC="${CC:-/usr/bin/cc}"
 export CXX="${CXX:-/usr/bin/c++}"
-export CFLAGS="${CFLAGS:--O1 -g0 -fno-var-tracking-assignments}"
-export CXXFLAGS="${CXXFLAGS:--O1 -g0 -fno-var-tracking-assignments}"
-export LDFLAGS="${LDFLAGS:--Wl,--no-keep-memory}"
+
+# GCC-only flags for native host builds — must NOT leak into NDK clang cross-compile
+apply_host_compiler_flags() {
+    export CFLAGS="${HOST_CFLAGS:--O1 -g0 -fno-var-tracking-assignments}"
+    export CXXFLAGS="${HOST_CXXFLAGS:--O1 -g0 -fno-var-tracking-assignments}"
+    export LDFLAGS="${HOST_LDFLAGS:--Wl,--no-keep-memory}"
+}
+
+clear_compiler_flags() {
+    unset CFLAGS CXXFLAGS LDFLAGS
+}
 
 HOST_COMPILER_PREFIX="$BUILD_DIR/mesa-host"
 ANDROID_BUILD="$BUILD_DIR/mesa-android"
@@ -194,6 +202,7 @@ build_host_tools() {
     fi
 
     rm -rf "$BUILD_DIR/mesa-host-build"
+    apply_host_compiler_flags
     meson setup "$BUILD_DIR/mesa-host-build" "$MESA_SRC" \
         "${MESON_LOW_MEM[@]}" \
         -Dprefix="$HOST_COMPILER_PREFIX" \
@@ -248,6 +257,7 @@ EOF
 
     if [[ ! -f "$ANDROID_BUILD/build.ninja" ]]; then
         rm -rf "$ANDROID_BUILD"
+        clear_compiler_flags
         meson setup "$ANDROID_BUILD" "$MESA_SRC" \
             --cross-file "$CROSS_FILE" \
             "${MESON_LOW_MEM[@]}" \
