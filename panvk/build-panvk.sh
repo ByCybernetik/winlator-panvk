@@ -359,8 +359,11 @@ pack_asset() {
         die "libdrm.so missing from $LIBDRM_PREFIX/lib"
     fi
 
-    # Verify all NEEDED libs are in the package
+    # Verify non-system runtime deps are in the package
     while read -r dep; do
+        case "$dep" in
+            libc.so|libm.so|libdl.so|ld-linux-*|ld-android.so*) continue ;;
+        esac
         [[ -f "$PACKAGE_DIR/usr/lib/$dep" ]] || die "packaging incomplete: missing $dep for libvulkan_panfrost.so"
     done < <(readelf -d "$PACKAGE_DIR/usr/lib/libvulkan_panfrost.so" | awk '/NEEDED/ {gsub(/[\[\]]/,"",$5); print $5}')
 
