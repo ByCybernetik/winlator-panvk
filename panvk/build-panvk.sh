@@ -50,6 +50,10 @@ HOST_COMPILER_PREFIX="$BUILD_DIR/mesa-host"
 ANDROID_BUILD="$BUILD_DIR/mesa-android"
 LIBCLC_PREFIX="$BUILD_DIR/libclc-prefix"
 LIBCLC_BUILD="$BUILD_DIR/libclc-build"
+LIBDRM_VERSION="libdrm-2.4.122"
+LIBDRM_SRC="$BUILD_DIR/libdrm-$LIBDRM_VERSION"
+LIBDRM_BUILD="$BUILD_DIR/libdrm-android-build"
+LIBDRM_PREFIX="$BUILD_DIR/libdrm-android-prefix"
 
 # Compiler flags via CFLAGS/CXXFLAGS/LDFLAGS (meson 1.4+ rejects broken array syntax in -Dc_args)
 MESON_LOW_MEM=(
@@ -118,10 +122,74 @@ clean_all() {
         "$BUILD_DIR/mesa-host-build" \
         "$HOST_COMPILER_PREFIX" \
         "$ANDROID_BUILD" \
+        "$LIBDRM_BUILD" \
+        "$LIBDRM_PREFIX" \
         "$PACKAGE_DIR/usr/lib/libvulkan_panfrost.so" \
         "$PACKAGE_DIR/usr/share"
     mkdir -p "$PACKAGE_DIR/usr/lib" "$PACKAGE_DIR/usr/share/vulkan/icd.d"
     echo "Clean done."
+}
+
+write_android_cross_file() {
+    NDK_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+    local libdrm_pc_dir=""
+    if [[ -d "$LIBDRM_PREFIX/lib/pkgconfig" ]]; then
+        libdrm_pc_dir="$LIBDRM_PREFIX/lib/pkgconfig"
+    fi
+    cat > "$CROSS_FILE" <<EOF
+[binaries]
+ar = '$NDK_BIN/llvm-ar'
+c = ['$NDK_BIN/aarch64-linux-android${API_LEVEL}-clang']
+cpp = ['$NDK_BIN/aarch64-linux-android${API_LEVEL}-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '--start-no-unused-arguments', '-static-libstdc++', '--end-no-unused-arguments', '-O1', '-g0']
+c_ld = 'lld'
+cpp_ld = 'lld'
+strip = '$NDK_BIN/llvm-strip'
+pkgconfig = 'pkg-config'
+
+[host_machine]
+system = 'android'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'
+
+[properties]
+needs_exe_wrapper = true
+${libdrm_pc_dir:+pkg_config_libdir = '$libdrm_pc_dir'}
+EOF
+}
+
+build_android_libdrm() {
+    if [[ -f "$LIBDRM_PREFIX/lib/libdrm.so" || -f "$LIBDRM_PREFIX/lib/libdrm.so.2" ]]; then
+        echo "libdrm for Android already built: $LIBDRM_PREFIX"
+        return 0
+    fi
+
+    echo "=== STAGE libdrm: cross-compile for Android ==="
+    write_android_cross_file
+
+    if [[ ! -f "$LIBDRM_SRC/meson.build" ]]; then
+        curl -L --retry 3 -f -o "$BUILD_DIR/libdrm.tar.xz" \
+            "https://dri.freedesktop.org/libdrm/${LIBDRM_VERSION}.tar.xz"
+        tar -xf "$BUILD_DIR/libdrm.tar.xz" -C "$BUILD_DIR"
+    fi
+
+    rm -rf "$LIBDRM_BUILD"
+    clear_compiler_flags
+    export PKG_CONFIG_LIBDIR="${ANDROID_PKG_CONFIG_LIBDIR:-/disable/non/android/system/pc/files}"
+    meson setup "$LIBDRM_BUILD" "$LIBDRM_SRC" \
+        --cross-file "$CROSS_FILE" \
+        -Dprefix="$LIBDRM_PREFIX" \
+        -Dlibdir=lib \
+        -Dvc4=disabled -Dfreedreno=disabled -Detnaviv=disabled \
+        -Dnouveau=disabled -Dintel=disabled -Damdgpu=disabled \
+        -Dradeon=disabled -Dexynos=disabled -Domap=disabled \
+        -Ddefault_library=shared
+
+    ninja_or_make "$LIBDRM_BUILD"
+    meson install -C "$LIBDRM_BUILD" -q
+
+    [[ -f "$LIBDRM_PREFIX/lib/libdrm.so" || -f "$LIBDRM_PREFIX/lib/libdrm.so.2" ]] \
+        || die "libdrm install incomplete"
 }
 
 libclc_ready() {
@@ -227,6 +295,7 @@ build_android_panvk() {
     echo "=== STAGE android: libvulkan_panfrost.so ==="
     ensure_libclc
     build_host_tools
+    build_android_libdrm
 
     export PATH="$HOST_COMPILER_PREFIX/bin:$PATH"
 
@@ -234,26 +303,7 @@ build_android_panvk() {
         git clone --depth 1 --branch "$MESA_TAG" https://gitlab.freedesktop.org/mesa/mesa.git "$MESA_SRC"
     fi
 
-    NDK_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-    cat > "$CROSS_FILE" <<EOF
-[binaries]
-ar = '$NDK_BIN/llvm-ar'
-c = ['$NDK_BIN/aarch64-linux-android${API_LEVEL}-clang']
-cpp = ['$NDK_BIN/aarch64-linux-android${API_LEVEL}-clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '--start-no-unused-arguments', '-static-libstdc++', '--end-no-unused-arguments', '-O1', '-g0']
-c_ld = 'lld'
-cpp_ld = 'lld'
-strip = '$NDK_BIN/llvm-strip'
-pkgconfig = 'pkg-config'
-
-[host_machine]
-system = 'android'
-cpu_family = 'aarch64'
-cpu = 'aarch64'
-endian = 'little'
-
-[properties]
-needs_exe_wrapper = true
-EOF
+    write_android_cross_file
 
     if [[ ! -f "$ANDROID_BUILD/build.ninja" ]]; then
         rm -rf "$ANDROID_BUILD"
@@ -286,14 +336,40 @@ pack_asset() {
     PANVK_SO="$(find "$ANDROID_BUILD" -name 'libvulkan_panfrost.so' -type f | head -1)"
     [[ -n "$PANVK_SO" ]] || die "libvulkan_panfrost.so not found. Run STAGE=android first."
 
+    rm -rf "$PACKAGE_DIR/usr/lib" "$PACKAGE_DIR/usr/share"
+    mkdir -p "$PACKAGE_DIR/usr/lib" "$PACKAGE_DIR/usr/share/vulkan/icd.d"
+
     cp "$PANVK_SO" "$PACKAGE_DIR/usr/lib/libvulkan_panfrost.so"
-    mkdir -p "$PACKAGE_DIR/usr/share/vulkan/icd.d"
+
+    # Mesa android-stub libs (linked by libvulkan_panfrost.so)
+    for lib in cutils hardware log nativewindow sync; do
+        stub="$(find "$ANDROID_BUILD" -name "lib${lib}.so" -path '*/android_stub/*' -type f | head -1)"
+        [[ -n "$stub" ]] || stub="$(find "$ANDROID_BUILD" -name "lib${lib}.so" -type f | head -1)"
+        [[ -n "$stub" ]] || die "lib${lib}.so not found in mesa android build"
+        cp "$stub" "$PACKAGE_DIR/usr/lib/lib${lib}.so"
+    done
+
+    # libdrm for Android (PanVK links libdrm.so, not in Winlator rootfs by default)
+    build_android_libdrm
+    if [[ -f "$LIBDRM_PREFIX/lib/libdrm.so" ]]; then
+        cp -a "$LIBDRM_PREFIX/lib/libdrm.so"* "$PACKAGE_DIR/usr/lib/"
+    elif [[ -f "$LIBDRM_PREFIX/lib/libdrm.so.2" ]]; then
+        cp "$LIBDRM_PREFIX/lib/libdrm.so.2" "$PACKAGE_DIR/usr/lib/libdrm.so"
+    else
+        die "libdrm.so missing from $LIBDRM_PREFIX/lib"
+    fi
+
+    # Verify all NEEDED libs are in the package
+    while read -r dep; do
+        [[ -f "$PACKAGE_DIR/usr/lib/$dep" ]] || die "packaging incomplete: missing $dep for libvulkan_panfrost.so"
+    done < <(readelf -d "$PACKAGE_DIR/usr/lib/libvulkan_panfrost.so" | awk '/NEEDED/ {gsub(/[\[\]]/,"",$5); print $5}')
+
     cat > "$PACKAGE_DIR/usr/share/vulkan/icd.d/panfrost_icd.aarch64.json" <<EOF
 {
     "ICD": {
         "api_version": "1.3.0",
         "library_arch": "64",
-        "library_path": "/data/data/com.winlator/files/rootfs/lib/libvulkan_panfrost.so"
+        "library_path": "/data/data/com.winlator/files/rootfs/usr/lib/libvulkan_panfrost.so"
     },
     "file_format_version": "1.0.1"
 }
